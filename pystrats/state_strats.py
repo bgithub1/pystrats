@@ -1,12 +1,14 @@
 '''
 Created on Feb 8, 2016
 
-@author: sarahhartman
+@author: bill perlman
 '''
 
-from utility.pyfunc import readYahoo, dsInsert
+from utility.pyfunc import readYahoo, dsInsert, asb
 from pandas.stats.moments import rolling_mean
 import numpy as np
+from pandas.core.frame import DataFrame
+import pandas as pd
 
 def strat_maLong_maShort(
         df =  readYahoo('SPY'),
@@ -18,6 +20,14 @@ def strat_maLong_maShort(
         openCol='Open',
         signOfTrade=1,
         printit=True):
+    ''' execute strategy which enters and exit based on Moving Average crossovers
+        Example:
+            from pystrats.state_strats import strat_maLong_maShort as ss
+            dfretfinal = ss() #strat_maLong_maShort()
+            print dfretfinal
+            print dfretfinal['ret'].mean()
+        
+    '''
     close = np.array(df[closeCol])
     high = np.array(df[highCol])
     low = np.array(df[lowCol])
@@ -47,8 +57,8 @@ def strat_maLong_maShort(
     pLow = np.insert(low[0:nl],0,None)
 
     # initialize state vector
-    state = [1]*n
-    pState = state
+    state = np.array([1]*n)
+    
     
     #loop
     start_i = maLongDays+1
@@ -61,9 +71,41 @@ def strat_maLong_maShort(
             state[i] = 1
 
         
-    print(state)
-   
+    pState = np.insert(state[0:nl],0,1)
     
-strat_maLong_maShort()
-
-#strat_maLong_maShort()
+    # create entry conditions
+    # 1. initial entry (state 1 to state 2)
+    e1_2 = np.array((pState==1) & (state==2))
+    e2_2 = np.array((pState==2) & (state==2))
+    e2_1 = np.array((pState==2) & (state==1))
+    
+    dfret = DataFrame([date,pHigh,pLow,pClose,pMa10,pMa9,pMa3,pMa2]).T
+    dfret.columns = ['Date','pHigh','pLow','pClose','pMa10','pMa9','pMa3','pMa2']
+    
+    #create daily entry prices
+    dailyEntryPrices = np.array([0]*n) 
+    # default entry
+    dailyEntryPrices = asb(dailyEntryPrices,pMa9, e1_2)
+    useCloseOnEntry = e1_2 & (low > pMa9)
+    dailyEntryPrices = asb(dailyEntryPrices,close,useCloseOnEntry)
+    dailyEntryPrices = asb(dailyEntryPrices,pClose, e2_2)
+    dailyEntryPrices = asb(dailyEntryPrices,pClose, e2_1)
+    dfret['entry'] = dailyEntryPrices
+    
+    # create DAILY settle prices, which are either 0 or the Close
+    # dfret$Close <- close
+    dailySettlePrices = np.array([0]*n)
+    dailySettlePrices = asb(dailySettlePrices,close, e1_2) #<- close[w1_2]
+    dailySettlePrices = asb(dailySettlePrices,close, e2_2) #dailySettlePrices[w2_2] <- close[w2_2]
+    dailySettlePrices = asb(dailySettlePrices,pMa2, e2_1) #dailySettlePrices[w2_1] <- pMa2[w2_1]
+    
+        # adjust for situations where the high is below the pMa2, so you get out at the close
+    useCloseOnExit = e2_1 & (high < pMa2)
+    dailySettlePrices  = asb(dailySettlePrices,close, useCloseOnExit) #dailySettlePrices[useCloseOnExit] <- close[useCloseOnExit]
+    dfret['exit'] = dailySettlePrices
+    dfret['ret'] = dfret['exit']/dfret['entry'] - 1
+    
+    dfret['ret'].fillna(0)
+    dfretfinal = dfret.dropna(0)#dfretfinal <- dfret[-badrows(dfret),]
+    return dfretfinal
+    
