@@ -4,7 +4,7 @@ Created on Feb 8, 2016
 @author: bill perlman
 '''
 
-from utility.pyfunc import readYahoo, dsInsert, asb
+from utility.pyfunc import readYahoo, dsInsert, asb, returnsPerformance
 from pandas.stats.moments import rolling_mean
 import numpy as np
 from pandas.core.frame import DataFrame
@@ -19,7 +19,8 @@ def strat_maLong_maShort(
         lowCol='Low',
         openCol='Open',
         signOfTrade=1,
-        printit=True):
+        printit=True,
+        block=False):
     ''' execute strategy which enters and exit based on Moving Average crossovers
         Example:
             from pystrats.state_strats import strat_maLong_maShort as ss
@@ -107,5 +108,10 @@ def strat_maLong_maShort(
     
     dfret['ret'].fillna(0)
     dfretfinal = dfret.dropna(0)#dfretfinal <- dfret[-badrows(dfret),]
+
+    if printit:
+        retDf = DataFrame({'Date':dfretfinal['Date'],'ret':dfretfinal['ret']})
+        returnsPerformance(retDf,block=block)
     return dfretfinal
-    
+
+s = strat_maLong_maShort(block=True)    
